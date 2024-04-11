@@ -534,6 +534,11 @@ then
 
   START_CMD="$SSH_COMMAND"
 
+  # Bootstrap Z4H and then override w/ ssh session
+  if tmux show-option -gqv "default-shell" | grep -q 'zsh'; then
+		START_CMD="zsh -i -c \"$SSH_COMMAND\""
+	fi
+
   if [[ -z "$NO_SHELL" ]]
   then
     DEFAULT_SHELL="$(tmux show-option -gqv "default-shell")"
