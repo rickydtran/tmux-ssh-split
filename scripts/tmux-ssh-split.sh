@@ -99,9 +99,13 @@ strip_command() {
   then
     # cmdline is null-separated
     mapfile -d '' -t cmd < "/proc/${pid}/cmdline"
+    set -- "${cmd[@]}"
+  else
+    # On macOS, cmd is a plain string from ps output.
+    # Word-split it into positional parameters.
+    # shellcheck disable=SC2086
+    set -- $cmd
   fi
-
-  set -- "${cmd[@]}"
 
   local og_args=("$@")
   local res=()
@@ -265,12 +269,31 @@ get_child_cmds() {
   # macOS
   if is_macos
   then
-    # Untested, contributed by @liuruibin
-    # https://github.com/pschmitt/tmux-ssh-split/pull/6
-    # NOTE Shouldn't we use "ps a" here?
-    # shellcheck disable=SC2009
-    ps -o ppid=,pid=,command= | \
-      awk '/^[[:space:]]*'"${ppid}"'[[:space:]]+/ { $1=""; print $0 }'
+    # Walk the full descendant tree so we can find SSH processes
+    # spawned by shell wrappers (e.g. zsh4humans ssh teleportation)
+    local all_ps
+    all_ps="$(ps -ww -o ppid=,pid=,command=)"
+    echo "$all_ps" | awk -v root="$ppid" '
+    {
+      pp = $1 + 0
+      pid = $2 + 0
+      children[pp] = children[pp] " " pid
+      $1 = ""
+      line[pid] = $0
+    }
+    function walk(p,    clist, n, arr, i) {
+      clist = children[p]
+      if (clist == "") return
+      n = split(clist, arr, " ")
+      for (i = 1; i <= n; i++) {
+        if (arr[i] != "") {
+          print line[arr[i]]
+          walk(arr[i])
+        }
+      }
+    }
+    END { walk(root) }
+    '
     return "$?"
   fi
 
