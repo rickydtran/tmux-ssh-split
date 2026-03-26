@@ -518,6 +518,10 @@ then
         STRIP_CMD=1
         shift
         ;;
+      --shell-wrap|--shell)
+        SHELL_WRAP=1
+        shift
+        ;;
       -*)
         usage >&2
         exit 2
@@ -570,28 +574,59 @@ then
     exit 0
   fi
 
-  if [[ -n "$STRIP_CMD" ]]
+  if [[ -n "$SHELL_WRAP" ]]
   then
-    SSH_COMMAND_STRIPPED="$(strip_command "$SSH_COMMAND_PID" "$SSH_COMMAND")"
+    # Extract hostname and run ssh through the user's interactive shell
+    # so that shell wrappers (e.g. zsh4humans ssh teleportation) are applied
+    SSH_HOST="$(extract_ssh_host "$SSH_COMMAND")"
 
-    if [[ -z "$SSH_COMMAND_STRIPPED" ]]
+    if [[ -n "$SSH_HOST" ]]
     then
-      echo "Could not strip command: $SSH_COMMAND" >&2
+      WRAP_SHELL="$(tmux display -p '#{pane_current_command}')"
+
+      # Resolve to full path
+      if [[ -n "$WRAP_SHELL" ]]
+      then
+        WRAP_SHELL="$(command -v "$WRAP_SHELL" 2>/dev/null || echo "$WRAP_SHELL")"
+      fi
+
+      # Fall back to SHELL or sh
+      if [[ -z "$WRAP_SHELL" ]] || ! command -v "$WRAP_SHELL" &>/dev/null
+      then
+        WRAP_SHELL="${SHELL:-$(command -v sh)}"
+      fi
+
+      SSH_COMMAND="${WRAP_SHELL} -ic 'ssh ${SSH_HOST}'"
     else
-      SSH_COMMAND="$SSH_COMMAND_STRIPPED"
+      echo "Could not extract hostname for shell-wrap, falling back" >&2
     fi
   fi
 
-  # Experimental
-  if [[ -n "$KEEP_REMOTE_CWD" ]]
+  if [[ -z "$SHELL_WRAP" ]] || [[ -z "$SSH_HOST" ]]
   then
-    SSH_COMMAND="$(inject_remote_cwd "$SSH_COMMAND")"
-  fi
+    if [[ -n "$STRIP_CMD" ]]
+    then
+      SSH_COMMAND_STRIPPED="$(strip_command "$SSH_COMMAND_PID" "$SSH_COMMAND")"
 
-  if [[ -z "$NO_ENV" ]]
-  then
-    # Inject -o SendEnv TMUX_SSH_SPLIT=1 into the SSH command
-    SSH_COMMAND="$(inject_ssh_env "$SSH_COMMAND")"
+      if [[ -z "$SSH_COMMAND_STRIPPED" ]]
+      then
+        echo "Could not strip command: $SSH_COMMAND" >&2
+      else
+        SSH_COMMAND="$SSH_COMMAND_STRIPPED"
+      fi
+    fi
+
+    # Experimental
+    if [[ -n "$KEEP_REMOTE_CWD" ]]
+    then
+      SSH_COMMAND="$(inject_remote_cwd "$SSH_COMMAND")"
+    fi
+
+    if [[ -z "$NO_ENV" ]]
+    then
+      # Inject -o SendEnv TMUX_SSH_SPLIT=1 into the SSH command
+      SSH_COMMAND="$(inject_ssh_env "$SSH_COMMAND")"
+    fi
   fi
 
   START_CMD="$SSH_COMMAND"

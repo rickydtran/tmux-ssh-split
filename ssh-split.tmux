@@ -24,6 +24,7 @@ main() {
   local wkey
   local keep_cwd
   local keep_remote_cwd
+  local shellwrap
   local rkey
 
   debug="$(get_tmux_option @ssh-split-debug)"
@@ -34,6 +35,7 @@ main() {
   noenv="$(get_tmux_option @ssh-split-no-env)"
   noshell="$(get_tmux_option @ssh-split-no-shell)"
   stripcmd="$(get_tmux_option @ssh-split-strip-cmd)"
+  shellwrap="$(get_tmux_option @ssh-split-shell-wrap)"
   hkey="$(get_tmux_option @ssh-split-h-key)"
   vkey="$(get_tmux_option @ssh-split-v-key)"
   wkey="$(get_tmux_option @ssh-split-w-key)"
@@ -75,6 +77,12 @@ main() {
   case "$stripcmd" in
     true|1|yes)
       extra_args+=(--strip-cmd)
+      ;;
+  esac
+
+  case "$shellwrap" in
+    true|1|yes)
+      extra_args+=(--shell-wrap)
       ;;
   esac
 
